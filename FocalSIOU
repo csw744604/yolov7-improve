@@ -1,0 +1,51 @@
+#修改utils/general.py中的bbox_iou函数
+
+def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, EIoU=False, SIoU=False, eps=1e-7):
+
+    # 计算IoU
+    iou = inter / union
+    if GIoU or DIoU or CIoU or EIoU or SIoU:
+        cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # 包围框宽度
+        ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # 包围框高度
+
+        if SIoU:  # SIoU损失函数实现
+            s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5
+            s_ch = (b2_y1 + b2_y2 - b1_y1 - b1_y2) * 0.5
+            sigma = torch.pow(s_cw ** 2 + s_ch ** 2, 0.5)
+            sin_alpha_1 = torch.abs(s_cw) / sigma
+            sin_alpha_2 = torch.abs(s_ch) / sigma
+            threshold = pow(2, 0.5) / 2
+            sin_alpha = torch.where(sin_alpha_1 > threshold, sin_alpha_2, sin_alpha_1)
+            angle_cost = torch.cos(torch.arcsin(sin_alpha) * 2 - np.pi / 2)
+            rho_x = (s_cw / cw) ** 2
+            rho_y = (s_ch / ch) ** 2
+            gamma = angle_cost - 2
+            distance_cost = 2 - torch.exp(gamma * rho_x) - torch.exp(gamma * rho_y)
+            omiga_w = torch.abs(w1 - w2) / torch.max(w1, w2)
+            omiga_h = torch.abs(h1 - h2) / torch.max(h1, h2)
+            shape_cost = torch.pow(1 - torch.exp(-omiga_w), 4) + torch.pow(1 - torch.exp(-omiga_h), 4)
+            return iou - 0.5 * (distance_cost + shape_cost)  # SIoU公式
+    return iou  # 默认IoU
+
+
+#utils/loss.py的ComputeLoss类中，修改IoU的计算调用参数
+# 原始代码：
+iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)
+# 修改为：
+iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, SIoU=True)  # 启用SIoU
+
+
+
+#在utils/loss.py中定义Focal L1函数
+def focal_l1_loss(pred, target, beta=1.0, gamma=2.0, reduction='mean'):
+   
+ #Focal L1 Loss：通过beta控制权重，gamma调整难易样本的权重
+    l1_loss = torch.abs(pred - target)
+    loss = l1_loss * (1 + torch.exp(-beta * l1_loss)) ** gamma  # 动态调整权重
+    if reduction == 'mean':
+        return loss.mean()
+    elif reduction == 'sum':
+        return loss.sum()
+    else:
+        return loss
+
